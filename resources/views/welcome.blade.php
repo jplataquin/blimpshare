@@ -129,6 +129,7 @@
         .bi-cloud-arrow-up.text-primary, .bi-hdd-network.text-info { color: var(--brand-primary) !important; }
         
         .hidden { display: none !important; }
+        .password-hidden { -webkit-text-security: disc; }
         .peer-status { font-size: 0.8rem; font-weight: 600; }
         .peer-online { color: var(--brand-primary); }
         .peer-offline { color: var(--brand-warm); }
@@ -240,10 +241,15 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label small fw-bold">Session Password (Optional)</label>
-                        <input type="password" id="input-create-password" class="form-control" placeholder="Min 6 characters">
+                        <div class="input-group">
+                            <input type="password" id="input-create-password" class="form-control" placeholder="Min 6 characters">
+                            <button class="btn btn-outline-secondary toggle-password" type="button">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </div>
                     </div>
                     <div class="mb-4 form-check">
-                        <input type="checkbox" class="form-check-input" id="check-create-terms">
+                        <input type="checkbox" class="form-check-input border border-primary" id="check-create-terms">
                         <label class="form-check-label small text-muted" for="check-create-terms">
                             I agree to the <a href="/terms" target="_blank">Terms & Services</a>
                         </label>
@@ -271,11 +277,16 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label small fw-bold">Session Password (If required)</label>
-                        <input type="password" id="input-join-password" class="form-control" placeholder="Enter password">
+                        <div class="input-group">
+                            <input type="password" id="input-join-password" class="form-control" placeholder="Enter password">
+                            <button class="btn btn-outline-secondary toggle-password" type="button">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </div>
                         <div id="password-error" class="text-danger mt-2 small hidden">Incorrect password. Please try again.</div>
                     </div>
                     <div class="mb-4 form-check">
-                        <input type="checkbox" class="form-check-input" id="check-join-terms">
+                        <input type="checkbox" class="form-check-input border border-primary" id="check-join-terms">
                         <label class="form-check-label small text-muted" for="check-join-terms">
                             I agree to the <a href="/terms" target="_blank">Terms & Services</a>
                         </label>
@@ -304,7 +315,10 @@
                                 <button class="btn btn-sm btn-qr-scan" id="btn-show-qr" title="Show QR Code"><i class="bi bi-qr-code"></i></button>
                             </div>
                             <div id="session-password-display" class="small text-muted mt-1 hidden">
-                                Password: <span id="session-password-text" class="fw-bold text-dark"></span>
+                                Password: <span id="session-password-text" class="fw-bold text-dark password-hidden"></span>
+                                <button class="btn btn-link btn-sm p-0 ms-1 text-decoration-none" id="toggle-session-password" type="button">
+                                    <i class="bi bi-eye"></i>
+                                </button>
                             </div>
                         </div>
                         <div class="mb-3">
@@ -330,8 +344,8 @@
                 </div>
 
                 <div class="card">
-                    <div class="card-header bg-white d-flex justify-content-between align-items-end pb-0 border-bottom-0">
-                        <ul class="nav nav-tabs border-bottom-0" id="fileTabs" role="tablist">
+                    <div class="card-header bg-white d-flex flex-md-row justify-content-between align-items-start align-items-md-end pb-0 border-bottom-0 gap-2">
+                        <ul class="nav nav-tabs border-bottom-0 flex-nowrap" id="fileTabs" role="tablist">
                             <li class="nav-item" role="presentation">
                                 <button class="nav-link active fw-bold" id="others-tab" data-bs-toggle="tab" data-bs-target="#others-pane" type="button" role="tab" aria-controls="others-pane" aria-selected="true">
                                     Peers <span id="count-others" class="small fw-normal">(0)</span>
@@ -343,21 +357,48 @@
                                 </button>
                             </li>
                         </ul>
-                        <div class="d-flex align-items-center gap-2 mb-2">
-                            <span id="hosted-stats" class="badge bg-primary hidden">0 hosted</span>
-                            <select id="file-filter" class="form-select form-select-sm" style="width: auto;">
-                                <option value="all">All Users</option>
-                            </select>
-                            <select id="file-type-filter" class="form-select form-select-sm" style="width: auto;">
-                                <option value="all">All Types</option>
-                                <option value="photo">Photos</option>
-                                <option value="video">Videos</option>
-                                <option value="music">Music</option>
-                                <option value="document">Documents</option>
-                                <option value="other">Others</option>
-                            </select>
+                        
+
+                        <div class="dropdown mb-2" id="filter-dropdown-container">
+                            <button class="btn btn-sm btn-outline-secondary position-relative" type="button" id="filterDropdown" data-bs-toggle="dropdown" aria-expanded="false" data-bs-auto-close="outside" title="Filter Files">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-funnel" viewBox="0 0 16 16">
+                                    <path d="M1.5 1.5A.5.5 0 0 1 2 1h12a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.128.334L10 8.692V13.5a.5.5 0 0 1-.342.474l-3 1A.5.5 0 0 1 6 14.5V8.692L1.628 3.834A.5.5 0 0 1 1.5 3.5zm1 .5v1.308l4.372 4.858A.5.5 0 0 1 7 8.5v5.306l2-.666V8.5a.5.5 0 0 1 .128-.334L13.5 3.308V2z"/>
+                                </svg>
+                                <span id="filter-indicator" class="position-absolute top-0 start-100 translate-middle p-1 bg-primary border border-light rounded-circle hidden">
+                                    <span class="visually-hidden">Filter active</span>
+                                </span>
+                            </button>
+                            <div class="dropdown-menu dropdown-menu-end p-3 shadow-lg border-0" aria-labelledby="filterDropdown" style="min-width: 220px; backdrop-filter: blur(10px); background: rgba(255, 255, 255, 0.95);">
+                                <h6 class="dropdown-header px-0 mb-2 text-dark fw-bold">Filter Files</h6>
+                                
+                                <div class="mb-3">
+                                    <label class="form-label small text-muted mb-1">By User</label>
+                                    <select id="file-filter" class="form-select form-select-sm">
+                                        <option value="all">All Users</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="mb-2">
+                                    <label class="form-label small text-muted mb-1">By Type</label>
+                                    <select id="file-type-filter" class="form-select form-select-sm">
+                                        <option value="all">All Types</option>
+                                        <option value="photo">Photos</option>
+                                        <option value="video">Videos</option>
+                                        <option value="music">Music</option>
+                                        <option value="document">Documents</option>
+                                        <option value="other">Others</option>
+                                    </select>
+                                </div>
+
+                                <div class="text-end border-top pt-2">
+                                    <button class="btn btn-link btn-sm text-decoration-none p-0" id="btn-reset-filters">Reset All</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
+
+
+
                     <div class="card-body p-0 border-top">
                         <div class="tab-content" id="fileTabsContent">
                             <div class="tab-pane fade show active" id="others-pane" role="tabpanel" aria-labelledby="others-tab" tabindex="0">
@@ -387,7 +428,12 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <input type="password" id="modal-password" class="form-control" placeholder="Enter session password">
+                    <div class="input-group">
+                        <input type="password" id="modal-password" class="form-control" placeholder="Enter session password">
+                        <button class="btn btn-outline-secondary toggle-password" type="button">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                    </div>
                     <div id="password-error" class="text-danger mt-2 small hidden">Incorrect password. Please try again.</div>
                 </div>
                 <div class="modal-footer">

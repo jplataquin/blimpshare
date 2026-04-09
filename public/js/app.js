@@ -1193,6 +1193,16 @@ function applyFilters() {
     const userVal = fileFilter ? fileFilter.value : 'all';
     const typeVal = typeFilter ? typeFilter.value : 'all';
     
+    // Update indicator
+    const indicator = document.getElementById('filter-indicator');
+    if (indicator) {
+        if (userVal !== 'all' || typeVal !== 'all') {
+            indicator.classList.remove('hidden');
+        } else {
+            indicator.classList.add('hidden');
+        }
+    }
+
     document.querySelectorAll('.user-file-group').forEach(group => {
         const isUserMatch = (userVal === 'all' || group.getAttribute('data-owner-id') === userVal);
         
@@ -1218,11 +1228,51 @@ function applyFilters() {
 
 // Add event listener for filtering files
 document.addEventListener('DOMContentLoaded', () => {
+    // Password visibility toggle
+    document.querySelectorAll('.toggle-password').forEach(button => {
+        button.addEventListener('click', function() {
+            const input = this.closest('.input-group').querySelector('input');
+            const icon = this.querySelector('i');
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.classList.replace('bi-eye', 'bi-eye-slash');
+            } else {
+                input.type = 'password';
+                icon.classList.replace('bi-eye-slash', 'bi-eye');
+            }
+        });
+    });
+
+    // Session password display toggle
+    const toggleSessionPwdBtn = document.getElementById('toggle-session-password');
+    if (toggleSessionPwdBtn) {
+        toggleSessionPwdBtn.addEventListener('click', function() {
+            const pwdText = document.getElementById('session-password-text');
+            const icon = this.querySelector('i');
+            if (pwdText.classList.contains('password-hidden')) {
+                pwdText.classList.remove('password-hidden');
+                icon.classList.replace('bi-eye', 'bi-eye-slash');
+            } else {
+                pwdText.classList.add('password-hidden');
+                icon.classList.replace('bi-eye-slash', 'bi-eye');
+            }
+        });
+    }
+
     const fileFilter = document.getElementById('file-filter');
     const typeFilter = document.getElementById('file-type-filter');
+    const resetBtn = document.getElementById('btn-reset-filters');
     
     if (fileFilter) fileFilter.addEventListener('change', applyFilters);
     if (typeFilter) typeFilter.addEventListener('change', applyFilters);
+
+    if (resetBtn) {
+        resetBtn.addEventListener('click', () => {
+            if (fileFilter) fileFilter.value = 'all';
+            if (typeFilter) typeFilter.value = 'all';
+            applyFilters();
+        });
+    }
 
     // Tab change listener to hide/show filter
     const fileTabs = document.getElementById('fileTabs');
@@ -1230,8 +1280,11 @@ document.addEventListener('DOMContentLoaded', () => {
         fileTabs.addEventListener('shown.bs.tab', (e) => {
             const isOthers = e.target.id === 'others-tab';
             if (fileFilter) {
-                if (isOthers) fileFilter.classList.remove('hidden');
-                else fileFilter.classList.add('hidden');
+                const userFilterContainer = fileFilter.closest('.mb-3');
+                if (userFilterContainer) {
+                    if (isOthers) userFilterContainer.classList.remove('hidden');
+                    else userFilterContainer.classList.add('hidden');
+                }
             }
             applyFilters();
         });
