@@ -113,8 +113,18 @@
             padding: 12px 16px; 
             border-bottom: 1px solid #f0f0f0; 
             transition: background 0.2s;
+            cursor: pointer;
         }
         .file-list-item:hover { background-color: rgba(214, 245, 153, 0.15); }
+
+        .file-icon-container {
+            width: 40px;
+            height: 40px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
         
         .progress { height: 8px; border-radius: 4px; margin-top: 6px; background-color: #f0f0f0; }
         .progress-bar.bg-info { background-color: var(--brand-accent) !important; color: var(--brand-dark); }
@@ -216,7 +226,7 @@
                 <!-- Initial Choice -->
                 <div id="landing-initial" class="card p-4">
                     <h3 class="text-center mb-4">Transfer Files P2P</h3>
-                    <p class="text-muted text-center mb-4">Secure, fast, with no files stored on our servers.</p>
+                    <p class="text-muted text-center mb-4">From iOS to Android, PC to Phone, and Browser to Browser.</p>
                     
                     <div class="d-grid gap-3">
                         <button type="button" id="btn-choice-create" class="btn btn-primary btn-lg py-3">
@@ -272,7 +282,7 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label small fw-bold">Your Name <span class="text-danger">*</span></label>
-                        <input type="text" id="input-join-name" class="form-control" placeholder="Enter your name">
+                        <input type="text" id="input-join-name" class="form-control" placeholder="Enter your name" maxlength="20">
                         <div class="invalid-feedback">Please enter your name.</div>
                     </div>
                     <div class="mb-3">
@@ -322,7 +332,7 @@
                             </div>
                         </div>
                         <div class="mb-3">
-                            <label class="small text-muted">Connected Peers</label>
+                            <label class="small text-muted">Peer Connections</label>
                             <div id="peer-list" class="list-group list-group-flush">
                                 <div class="list-group-item px-0 py-1 text-muted italic small">Waiting for others to join...</div>
                             </div>
@@ -386,6 +396,7 @@
                                         <option value="video">Videos</option>
                                         <option value="music">Music</option>
                                         <option value="document">Documents</option>
+                                        <option value="archive">Archives</option>
                                         <option value="other">Others</option>
                                     </select>
                                 </div>
@@ -516,6 +527,35 @@
                 </div>
                 <div class="modal-footer">
                     <p class="text-muted small w-100 text-center mb-0">Point your camera at the Blimpshare QR code.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Preview Modal -->
+    <div class="modal fade" id="previewModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-fullscreen">
+            <div class="modal-content bg-dark text-white">
+                <div class="modal-header border-0 bg-dark px-4 py-3">
+                    <h5 class="modal-title text-truncate text-white" id="preview-modal-filename" style="max-width: 80%;"></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body d-flex flex-column align-items-center justify-content-center position-relative p-0" id="preview-modal-body">
+                    <button class="btn btn-dark position-absolute top-50 start-0 translate-middle-y ms-3 rounded-circle shadow-lg border border-secondary" id="btn-preview-prev" style="z-index: 10; width: 60px; height: 60px; opacity: 0.8;">
+                        <i class="bi bi-chevron-left fs-3"></i>
+                    </button>
+                    
+                    <div id="preview-content-container" class="w-100 h-100 d-flex flex-column align-items-center justify-content-center overflow-hidden p-3" style="background-color: #111;">
+                        <!-- Content goes here -->
+                    </div>
+
+                    <button class="btn btn-dark position-absolute top-50 end-0 translate-middle-y me-3 rounded-circle shadow-lg border border-secondary" id="btn-preview-next" style="z-index: 10; width: 60px; height: 60px; opacity: 0.8;">
+                        <i class="bi bi-chevron-right fs-3"></i>
+                    </button>
+                </div>
+                <div class="modal-footer border-0 bg-dark d-flex justify-content-center gap-3 py-3">
+                    <a href="#" class="btn btn-success btn-lg hidden" id="btn-preview-download" download><i class="bi bi-download me-2"></i>Download</a>
+                    <a href="#" target="_blank" class="btn btn-info btn-lg text-white hidden" id="btn-preview-open-tab"><i class="bi bi-box-arrow-up-right me-2"></i>Open in New Tab</a>
                 </div>
             </div>
         </div>

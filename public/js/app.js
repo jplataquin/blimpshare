@@ -16,25 +16,17 @@ let receivedFiles = {}; // fileId -> { name, size, type, chunks: [] }
 const iceServers = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun.cloudflare.com:3478' },
         ...(window.rtcConfig && window.rtcConfig.turnUrl ? (() => {
             const turnUrl = window.rtcConfig.turnUrl;
             const urls = [turnUrl];
             
-            // Extract host to provide alternatives
+            // Extract host to provide alternatives without exceeding the 5 server limit
             try {
-                // Handle turn:host:port or turn:host
                 const parts = turnUrl.split(':');
-                if (parts.length >= 2) {
+                if (parts.length >= 2 && turnUrl.startsWith('turn:')) {
                     const host = parts[1].replace(/\/\//, '');
-                    
-                    // If it's a turn: URL, also add turns: on 5349 as a fallback for Firefox/Secure contexts
-                    if (turnUrl.startsWith('turn:')) {
-                        urls.push(`turns:${host}:5349`);
-                        urls.push(`turns:${host}:443`);
-                        // Also add TCP transport explicitly
-                        urls.push(`${turnUrl}?transport=tcp`);
-                    }
+                    urls.push(`turns:${host}:443`); // Secure fallback
+                    urls.push(`${turnUrl}?transport=tcp`); // TCP fallback
                 }
             } catch (e) {
                 console.warn('Failed to parse turnUrl for alternatives', e);
@@ -66,8 +58,13 @@ request.onsuccess = (event) => { db = event.target.result; };
 
 let myDisplayName = 'Anonymous';
 let peerNames = {}; // peerId -> displayName
+let peerDevices = {}; // peerId -> deviceType
 let peerActivity = {}; // peerId -> timestamp
 let peerHostedCounts = {}; // peerId -> count
+
+function getDeviceType() {
+    return /Mobile|Android|iP(ad|hone|od)|IEMobile|BlackBerry|Kindle|Silk-Accelerated|(hpw|web)OS|Opera M(obi|ini)/.test(navigator.userAgent) ? 'mobile' : 'desktop';
+}
 
 // --- UI Elements ---
 const views = {
@@ -167,7 +164,7 @@ btns.create.onclick = async () => {
 
     try {
         const password = inputs.createPassword.value;
-        myDisplayName = nameVal;
+        myDisplayName = nameVal.substring(0, 20);
         const data = await apiCall('/sessions', 'POST', { password });
         startSession(data.slug, password);
     } catch (e) { 
@@ -215,7 +212,7 @@ btns.join.onclick = () => {
 
     if (hasError) return;
 
-    myDisplayName = nameVal;
+    myDisplayName = nameVal.substring(0, 20);
     attemptJoin(slugInput.value.trim(), inputs.joinPassword.value);
 };
 
@@ -275,7 +272,7 @@ function startSession(slug, password = null) {
     startWebSocket(slug);
     
     // Initial broadcast
-    sendSignalingMessage('presence', { peerId, name: myDisplayName, hostedCount: Object.keys(files).length });
+    sendSignalingMessage('presence', { peerId, name: myDisplayName, hostedCount: Object.keys(files).length, deviceType: getDeviceType() });
     
     console.log('start session',currentSessionSlug);
 
@@ -286,7 +283,7 @@ function startSession(slug, password = null) {
         if (!currentSessionSlug || !isHeartbeatActive) return;
 
         try {
-            await sendSignalingMessage('presence', { peerId, name: myDisplayName, hostedCount: Object.keys(files).length });
+            await sendSignalingMessage('presence', { peerId, name: myDisplayName, hostedCount: Object.keys(files).length, deviceType: getDeviceType() });
         } catch (e) {
             console.error('Heartbeat failed', e);
         } finally {
@@ -327,6 +324,7 @@ function startSession(slug, password = null) {
                 
                 // Remove from tracking
                 delete peerNames[id];
+                delete peerDevices[id];
                 delete peerActivity[id];
                 delete peerHostedCounts[id];
                 changed = true;
@@ -461,12 +459,13 @@ async function handleSignalingMessage(msg) {
         case 'presence':
             // console.log('Received presence from:', payload.name, fromPeerId);
             peerNames[fromPeerId] = payload.name || 'Anonymous';
+            peerDevices[fromPeerId] = payload.deviceType || 'desktop';
             if (payload.hostedCount !== undefined) {
                 peerHostedCounts[fromPeerId] = payload.hostedCount;
             }
             
             // Reply with our presence so they know we are here
-            sendSignalingMessage('presence-response', { peerId, name: myDisplayName, hostedCount: Object.keys(files).length }, fromPeerId);
+            sendSignalingMessage('presence-response', { peerId, name: myDisplayName, hostedCount: Object.keys(files).length, deviceType: getDeviceType() }, fromPeerId);
 
             // Deterministic initiation: the peer with the "smaller" ID initiates
             if (peerId < fromPeerId) {
@@ -482,6 +481,7 @@ async function handleSignalingMessage(msg) {
         case 'presence-response':
             // console.log('Received presence-response from:', payload.name, fromPeerId);
             peerNames[fromPeerId] = payload.name || 'Anonymous';
+            peerDevices[fromPeerId] = payload.deviceType || 'desktop';
             if (payload.hostedCount !== undefined) {
                 peerHostedCounts[fromPeerId] = payload.hostedCount;
             }
@@ -508,6 +508,7 @@ async function handleSignalingMessage(msg) {
                 delete dataChannels[fromPeerId];
             }
             delete peerNames[fromPeerId];
+            delete peerDevices[fromPeerId];
             delete peerActivity[fromPeerId];
             delete peerHostedCounts[fromPeerId];
             updatePeerList();
@@ -852,13 +853,13 @@ async function sendFile(file, targetPeerId = null) {
     if (openChannels.length === 0) {
         if (targetPeerId === null) {
             const peerCount = Object.keys(peerNames).length;
-            if (peerCount > 0) {
-                alert("File added to your shared list. Peers are connecting but not yet ready to receive files.");
-            } else {
-                alert("File added to your shared list. No connected peers to send the file to. Share the link to invite someone!");
-            }
+            // if (peerCount > 0) {
+            //     alert("File added to your shared list. Peers are connecting but not yet ready to receive files.");
+            // } else {
+            //     alert("File added to your shared list. No connected peers to send the file to. Share the link to invite someone!");
+            // }
             // Still add it to the UI list as hosted so the user sees it
-            addFileToList(fileId, file.name, file.size, 'hosting', peerId, 'Me (' + myDisplayName + ')', file.type);
+            addFileToList(fileId, file.name, file.size, 'hosting', peerId, 'Me (' + myDisplayName + ')', file.type, file);
 
             // Automatically switch to "My Files" tab
             const mineTab = document.getElementById('mine-tab');
@@ -870,7 +871,7 @@ async function sendFile(file, targetPeerId = null) {
     // Only show in OUR list if it's the initial upload or if we specifically want to see resends
     // For now, let's only add to list if it's the initial upload to avoid cluttering "My Files"
     if (targetPeerId === null) {
-        addFileToList(fileId, file.name, file.size, 'sending', peerId, 'Me (' + myDisplayName + ')', file.type);
+        addFileToList(fileId, file.name, file.size, 'sending', peerId, 'Me (' + myDisplayName + ')', file.type, file);
         
         // Automatically switch to "My Files" tab if not already there
         const mineTab = document.getElementById('mine-tab');
@@ -960,10 +961,20 @@ async function assembleFile(fileId) {
             
             const item = document.querySelector(`[data-file-id="${fileId}"]`);
             if (item) {
+                // Update icon if it's an image
+                const category = item.getAttribute('data-category');
+                if (category === 'photo') {
+                    const iconContainer = item.querySelector('.file-icon-container');
+                    if (iconContainer) {
+                        iconContainer.innerHTML = getFileIconHtml('photo', null, url);
+                    }
+                }
+
                 const downloadBtn = item.querySelector('.download-btn');
                 downloadBtn.href = url;
                 downloadBtn.download = file.name;
                 downloadBtn.classList.remove('hidden');
+                downloadBtn.classList.add('downloaded');
                 item.querySelector('.progress').classList.add('hidden');
                 
                 downloadBtn.onclick = (e) => {
@@ -1035,9 +1046,14 @@ function updatePeerList() {
     // Add current user
     const myHostedCount = Object.keys(files).length;
     const myHostedBadge = myHostedCount > 0 ? `<span class="badge bg-primary ms-2" title="${myHostedCount} files hosted by you">${myHostedCount} hosted</span>` : '';
+    const myDeviceType = getDeviceType();
+    let myDeviceIcon = '<i class="bi bi-display me-2 text-primary"></i>';
+    if (myDeviceType === 'mobile') {
+        myDeviceIcon = '<i class="bi bi-phone me-2 text-primary"></i>';
+    }
 
     list.innerHTML += `<div class="list-group-item px-0 py-1 d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-person-fill me-2 text-primary"></i>${myDisplayName} (Me)${myHostedBadge}</span>
+        <span>${myDeviceIcon}${myDisplayName} (Me)${myHostedBadge}</span>
         <span class="peer-status" title="Online"><i class="bi bi-circle-fill text-success"></i></span>
     </div>`;
 
@@ -1046,6 +1062,12 @@ function updatePeerList() {
         const name = peerNames[id];
         const pc = rtcConnections[id];
         const dc = dataChannels[id];
+        const deviceType = peerDevices[id] || 'desktop';
+        
+        let deviceIcon = '<i class="bi bi-display me-2"></i>'; // Default desktop icon
+        if (deviceType === 'mobile') {
+            deviceIcon = '<i class="bi bi-phone me-2"></i>';
+        }
         
         let state = pc ? pc.connectionState : 'offline';
         let dcStatus = dc ? ` (DC: ${dc.readyState})` : '';
@@ -1077,7 +1099,7 @@ function updatePeerList() {
         }
 
         list.innerHTML += `<div class="list-group-item px-0 py-1 d-flex justify-content-between align-items-center">
-            <span><i class="bi bi-person-fill me-2"></i>${name}${hostedBadge}</span>
+            <span>${deviceIcon}${name}${hostedBadge}</span>
             <span class="peer-status" title="${statusTitle}">${statusIcon}</span>
         </div>`;
     });
@@ -1149,10 +1171,19 @@ function getOrCreateUserGroup(ownerId, ownerName) {
         const isMe = (ownerId === peerId);
         const list = document.getElementById(isMe ? 'file-list-mine' : 'file-list-others');
         
+        let deviceType = 'desktop';
+        if (isMe) {
+            deviceType = getDeviceType();
+        } else if (peerDevices[ownerId]) {
+            deviceType = peerDevices[ownerId];
+        }
+        
+        const deviceIcon = deviceType === 'mobile' ? '<i class="bi bi-phone me-1"></i>' : '<i class="bi bi-display me-1"></i>';
+        
         const groupHtml = `
             <div id="user-group-${ownerId}" class="user-file-group" data-owner-id="${ownerId}">
                 <div class="bg-light p-2 border-bottom fw-bold text-muted small">
-                    <i class="bi bi-person-fill me-1"></i> ${ownerName}
+                    ${deviceIcon} ${ownerName}
                 </div>
                 <div class="list-group list-group-flush group-items"></div>
             </div>
@@ -1310,23 +1341,60 @@ function getFileCategory(name, mime) {
     const documents = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv'];
     if (documents.includes(ext) || mime.startsWith('text/') || mime.includes('document') || mime.includes('pdf')) return 'document';
     
+    const archives = ['zip', 'rar', '7z', 'tar', 'gz', 'bz2'];
+    if (archives.includes(ext) || mime.includes('zip') || mime.includes('tar') || mime.includes('compressed')) return 'archive';
+
     return 'other';
 }
 
-function addFileToList(id, name, size, type, ownerId, ownerName, mime = '') {
+function getFileIconHtml(category, fileObj = null, blobUrl = null) {
+    const iconSize = 40;
+    if (category === 'photo') {
+        if (blobUrl) {
+            return `<img src="${blobUrl}" class="rounded shadow-sm border" style="width: ${iconSize}px; height: ${iconSize}px; object-fit: cover;">`;
+        }
+        if (fileObj) {
+            const url = URL.createObjectURL(fileObj);
+            return `<img src="${url}" class="rounded shadow-sm border" style="width: ${iconSize}px; height: ${iconSize}px; object-fit: cover;">`;
+        }
+        return `<div class="bg-light rounded d-flex align-items-center justify-content-center border" style="width: ${iconSize}px; height: ${iconSize}px;"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-success"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg></div>`;
+    }
+    
+    let svg = '';
+    if (category === 'music') {
+        svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>`;
+    } else if (category === 'video') {
+        svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><line x1="7" y1="2" x2="7" y2="22"></line><line x1="17" y1="2" x2="17" y2="22"></line><line x1="2" y1="12" x2="22" y2="12"></line><line x1="2" y1="7" x2="7" y2="7"></line><line x1="2" y1="17" x2="7" y2="17"></line><line x1="17" y1="17" x2="22" y2="17"></line><line x1="17" y1="7" x2="22" y2="7"></line></svg>`;
+    } else if (category === 'document') {
+        svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>`;
+    } else if (category === 'archive') {
+        svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>`;
+    } else {
+        svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>`;
+    }
+    
+    return `<div class="bg-light rounded d-flex align-items-center justify-content-center border" style="width: ${iconSize}px; height: ${iconSize}px;">${svg}</div>`;
+}
+
+function addFileToList(id, name, size, type, ownerId, ownerName, mime = '', fileObj = null) {
     const container = getOrCreateUserGroup(ownerId, ownerName);
     const category = getFileCategory(name, mime);
     const sizeStr = (size / (1024 * 1024)).toFixed(2) + ' MB';
     
-    let iconHtml = '';
-    if (type === 'sending') iconHtml = '<i class="bi bi-cloud-arrow-up text-primary fs-4 me-2"></i>';
-    else if (type === 'hosting') iconHtml = '<i class="bi bi-hdd-network text-info fs-4 me-2" title="Hosted & Available"></i>';
+    let statusIconHtml = '';
+    if (type === 'sending') statusIconHtml = '<i class="bi bi-cloud-arrow-up text-primary fs-4 me-2"></i>';
+    else if (type === 'hosting') statusIconHtml = '<i class="bi bi-hdd-network text-info fs-4 me-2" title="Hosted & Available"></i>';
+
+    const typeIconHtml = getFileIconHtml(category, fileObj);
 
     const progressWidth = type === 'hosting' ? '100%' : '0%';
     const progressClass = type === 'hosting' ? 'bg-info' : 'progress-bar-striped progress-bar-animated';
 
     const html = `
         <div class="list-group-item file-list-item" data-file-id="${id}" data-category="${category}">
+            <div class="file-icon-container me-3">
+                ${typeIconHtml}
+            </div>
             <div class="flex-grow-1 me-3">
                 <div class="d-flex justify-content-between">
                     <span class="fw-bold text-truncate" style="max-width: 200px;">${name}</span>
@@ -1337,7 +1405,7 @@ function addFileToList(id, name, size, type, ownerId, ownerName, mime = '') {
                 </div>
             </div>
             <div class="d-flex align-items-center">
-                ${iconHtml}
+                ${statusIconHtml}
                 <a href="#" class="btn btn-sm btn-success download-btn hidden"><i class="bi bi-download"></i></a>
             </div>
         </div>
@@ -1401,7 +1469,7 @@ function updateHostedStats() {
 
     // Broadcast the new count to peers immediately if session is active
     if (currentSessionSlug) {
-        sendSignalingMessage('presence', { peerId, name: myDisplayName, hostedCount: count });
+        sendSignalingMessage('presence', { peerId, name: myDisplayName, hostedCount: count, deviceType: getDeviceType() });
     }
 }
 
@@ -1587,3 +1655,141 @@ function handleScannedUrl(url) {
     }
 }
 
+
+// --- File Preview Features ---
+let currentPreviewList = [];
+let currentPreviewIndex = -1;
+
+function showPreviewForIndex(index) {
+    if (index < 0 || index >= currentPreviewList.length) return;
+    currentPreviewIndex = index;
+    const fileItem = currentPreviewList[index];
+    const fileId = fileItem.getAttribute('data-file-id');
+    const category = fileItem.getAttribute('data-category');
+    const filename = fileItem.querySelector('.fw-bold').innerText;
+    
+    document.getElementById('preview-modal-filename').innerText = filename;
+    const prevBtn = document.getElementById('btn-preview-prev');
+    const nextBtn = document.getElementById('btn-preview-next');
+    if (prevBtn) prevBtn.style.display = index > 0 ? 'block' : 'none';
+    if (nextBtn) nextBtn.style.display = index < currentPreviewList.length - 1 ? 'block' : 'none';
+
+    const contentContainer = document.getElementById('preview-content-container');
+    if (!contentContainer) return;
+    contentContainer.innerHTML = '';
+    const downloadBtnUI = document.getElementById('btn-preview-download');
+    const openTabBtnUI = document.getElementById('btn-preview-open-tab');
+    if (downloadBtnUI) downloadBtnUI.classList.add('hidden');
+    if (openTabBtnUI) openTabBtnUI.classList.add('hidden');
+
+    let fileUrl = null;
+    let fileMime = '';
+
+    if (files[fileId]) {
+        fileUrl = URL.createObjectURL(files[fileId]);
+        fileMime = files[fileId].type;
+    } else {
+        const listBtn = fileItem.querySelector('.download-btn');
+        if (listBtn && listBtn.href && listBtn.classList.contains('downloaded')) {
+            fileUrl = listBtn.href;
+            fileMime = receivedFiles[fileId] ? receivedFiles[fileId].mime : '';
+        }
+    }
+
+    const isPeersTab = fileItem.closest('#others-pane') !== null;
+    if (isPeersTab && fileUrl && downloadBtnUI) {
+        downloadBtnUI.href = fileUrl;
+        downloadBtnUI.download = filename;
+        downloadBtnUI.classList.remove('hidden');
+    }
+
+    if (!fileUrl) {
+        contentContainer.innerHTML = '<div class="text-center text-muted mt-5"><i class="bi bi-cloud-arrow-down display-1 mb-3"></i><p>File not downloaded yet.</p></div>';
+        return;
+    }
+
+    if (category === 'photo') {
+        contentContainer.innerHTML = `<img src="${fileUrl}" class="img-fluid rounded shadow" style="max-height: 80vh; max-width: 100%; object-fit: contain;">`;
+    } else if (category === 'video') {
+        contentContainer.innerHTML = `<video src="${fileUrl}" controls autoplay class="w-100 rounded shadow" style="max-height: 80vh; outline: none;"></video>`;
+    } else if (category === 'music') {
+        contentContainer.innerHTML = `
+            <div class="text-center p-5 bg-secondary bg-opacity-25 rounded-circle mb-4" style="width: 200px; height: 200px; display:flex; align-items:center; justify-content:center;">
+                <i class="bi bi-music-note-beamed text-light" style="font-size: 5rem;"></i>
+            </div>
+            <audio src="${fileUrl}" controls autoplay class="w-75"></audio>`;
+    } else if (category === 'document' && (fileMime === 'application/pdf' || fileMime.startsWith('text/'))) {
+        contentContainer.innerHTML = `<iframe src="${fileUrl}" class="w-100 border-0 bg-white rounded shadow" style="height: 80vh;"></iframe>`;
+        if (openTabBtnUI) {
+            openTabBtnUI.href = fileUrl;
+            openTabBtnUI.classList.remove('hidden');
+        }
+    } else if (category === 'document') {
+         contentContainer.innerHTML = `
+            <div class="text-center">
+                <i class="bi bi-file-earmark-text display-1 text-muted mb-3"></i>
+                <p class="fs-5">No preview available for this document type.</p>
+            </div>`;
+         if (openTabBtnUI) {
+             openTabBtnUI.href = fileUrl;
+             openTabBtnUI.classList.remove('hidden');
+         }
+    } else if (category === 'archive') {
+         contentContainer.innerHTML = `
+            <div class="text-center">
+                <i class="bi bi-file-earmark-zip display-1 text-muted mb-3"></i>
+                <p class="fs-5">No preview available for archives.</p>
+            </div>`;
+    } else {
+         contentContainer.innerHTML = `
+            <div class="text-center">
+                <i class="bi bi-file-earmark display-1 text-muted mb-3"></i>
+                <p class="fs-5">No preview available.</p>
+            </div>`;
+    }
+}
+
+document.addEventListener('click', (e) => {
+    const fileItem = e.target.closest('.file-list-item');
+    const downloadBtn = e.target.closest('.download-btn');
+    // Open preview if clicking the item itself (not the download button directly)
+    if (fileItem && !downloadBtn) {
+        const activePane = fileItem.closest('.tab-pane');
+        if (!activePane) return;
+
+        currentPreviewList = Array.from(activePane.querySelectorAll('.file-list-item:not(.hidden)'));
+        currentPreviewIndex = currentPreviewList.indexOf(fileItem);
+
+        if (currentPreviewIndex === -1) return;
+
+        showPreviewForIndex(currentPreviewIndex);
+        
+        const previewModal = new bootstrap.Modal(document.getElementById('previewModal'));
+        previewModal.show();
+    }
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+    const prevBtn = document.getElementById('btn-preview-prev');
+    const nextBtn = document.getElementById('btn-preview-next');
+    
+    if (prevBtn) {
+        prevBtn.addEventListener('click', () => showPreviewForIndex(currentPreviewIndex - 1));
+    }
+    if (nextBtn) {
+        nextBtn.addEventListener('click', () => showPreviewForIndex(currentPreviewIndex + 1));
+    }
+});
+
+
+document.addEventListener('DOMContentLoaded', () => {
+    const previewModalEl = document.getElementById('previewModal');
+    if (previewModalEl) {
+        previewModalEl.addEventListener('hidden.bs.modal', () => {
+            const contentContainer = document.getElementById('preview-content-container');
+            if (contentContainer) {
+                contentContainer.innerHTML = '';
+            }
+        });
+    }
+});
