@@ -457,6 +457,15 @@ async function handleSignalingMessage(msg) {
 
     switch (msg.type) {
         case 'presence':
+            // Check if room is full
+            const currentPeerCount = Object.keys(peerNames).length;
+            const isNewPeer = !peerNames[fromPeerId];
+            if (isNewPeer && currentPeerCount >= 5) {
+                console.log('Session full, rejecting peer:', fromPeerId);
+                sendSignalingMessage('room-full', {}, fromPeerId);
+                break;
+            }
+
             // console.log('Received presence from:', payload.name, fromPeerId);
             peerNames[fromPeerId] = payload.name || 'Anonymous';
             peerDevices[fromPeerId] = payload.deviceType || 'desktop';
@@ -479,6 +488,12 @@ async function handleSignalingMessage(msg) {
             break;
 
         case 'presence-response':
+            // Check if room is already full locally
+            if (!peerNames[fromPeerId] && Object.keys(peerNames).length >= 5) {
+                console.log('Local session full, ignoring presence-response from:', fromPeerId);
+                break;
+            }
+
             // console.log('Received presence-response from:', payload.name, fromPeerId);
             peerNames[fromPeerId] = payload.name || 'Anonymous';
             peerDevices[fromPeerId] = payload.deviceType || 'desktop';
@@ -495,6 +510,11 @@ async function handleSignalingMessage(msg) {
                 }
             }
             updatePeerList();
+            break;
+
+        case 'room-full':
+            alert('This session is full (Maximum 6 peers). You will be returned to the home screen.');
+            window.location.href = '/';
             break;
 
         case 'leave':

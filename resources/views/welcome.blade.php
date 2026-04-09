@@ -246,7 +246,7 @@
                     <h3 class="text-center mb-4">Create Session</h3>
                     <div class="mb-3">
                         <label class="form-label small fw-bold">Your Name <span class="text-danger">*</span></label>
-                        <input type="text" id="input-create-name" class="form-control" placeholder="Enter your name">
+                        <input type="text" id="input-create-name" class="form-control" placeholder="Enter your name" maxlength="20">
                         <div class="invalid-feedback">Please enter your name.</div>
                     </div>
                     <div class="mb-3">
