@@ -432,7 +432,7 @@ async function processSignalQueue() {
         }
     } catch (e) { 
         console.error('Error sending signaling message', e); 
-        alert(`Network Error: Failed to send ${type} signaling message. Check your connection or server logs.`);
+        alert(`Network Error: Failed to send ${type} signaling message. Check your connection.`);
     } finally {
         isSendingSignal = false;
         // Immediate call for the next item in queue
@@ -580,8 +580,9 @@ async function resendFilesToPeer(targetPeerId) {
     for (const fileId in files) {
         const file = files[fileId];
         // We call sendFile with targetPeerId to ensure it only goes to the requester
-        // and doesn't re-add itself to our own hosted list
-        sendFile(file, targetPeerId);
+        // and doesn't re-add itself to our own hosted list.
+        // We also pass the original fileId so it can be tracked for unhosting.
+        sendFile(file, targetPeerId, fileId);
     }
 }
 
@@ -831,6 +832,42 @@ function handleDataChannelMessage(remotePeerId, data) {
             addFileToList(msg.fileId, msg.name, msg.size, 'receiving', remotePeerId, senderName, msg.mime);
         } else if (msg.type === 'file-end') {
             assembleFile(msg.fileId);
+        } else if (msg.type === 'file-unhosted') {
+            console.log(`Peer unhosted file: ${msg.fileId}`);
+            delete receivedFiles[msg.fileId];
+            const item = document.querySelector(`[data-file-id="${msg.fileId}"]`);
+            if (item) {
+                const groupEl = item.closest('.user-file-group');
+                item.remove();
+                if (groupEl && groupEl.querySelectorAll('.file-list-item').length === 0) {
+                    groupEl.remove();
+                    updateFileFilterOptions();
+                }
+                applyFilters();
+            }
+        } else if (msg.type === 'file-cancelled') {
+            console.warn(`File transfer cancelled: ${msg.fileId}. Reason: ${msg.reason}`);
+            const item = document.querySelector(`[data-file-id="${msg.fileId}"]`);
+            if (item) {
+                const bar = item.querySelector('.progress-bar');
+                if (bar) {
+                    bar.classList.remove('progress-bar-animated', 'progress-bar-striped');
+                    bar.classList.add('bg-danger');
+                    bar.title = `Cancelled: ${msg.reason}`;
+                }
+                const nameEl = item.querySelector('.file-name-text');
+                if (nameEl) nameEl.classList.add('text-danger');
+                
+                // Show a small error text if possible
+                const flexGrowEl = item.querySelector('.flex-grow-1');
+                if (flexGrowEl) {
+                    const err = document.createElement('div');
+                    err.className = 'text-danger x-small mt-1';
+                    err.innerText = 'Transfer cancelled by sender.';
+                    flexGrowEl.appendChild(err);
+                }
+            }
+            delete receivedFiles[msg.fileId];
         }
     } else {
         const view = new Uint8Array(data);
@@ -851,19 +888,20 @@ function handleDataChannelMessage(remotePeerId, data) {
     }
 }
 
-async function sendFile(file, targetPeerId = null) {
+async function sendFile(file, targetPeerId = null, originalFileId = null) {
     let fileId;
+    let hostedId = originalFileId;
     
     // If targetPeerId is null, this is a new file being added by the user
     if (targetPeerId === null) {
         fileId = crypto.randomUUID();
+        hostedId = fileId;
         // Track the file for later resending
         files[fileId] = file;
         updateHostedStats();
     } else {
-        // This is a resend to a specific peer. We generate a new ID for this transfer
-        // to avoid any potential conflicts with existing transfer UI items on the receiver side
-        fileId = crypto.randomUUID();
+        // Use the original file ID if available so peers can identify it for unhosting
+        fileId = originalFileId || crypto.randomUUID();
     }
 
     const openChannels = targetPeerId 
@@ -914,11 +952,28 @@ async function sendFile(file, targetPeerId = null) {
     const sleep = ms => new Promise(r => setTimeout(r, ms));
 
     while (true) {
+        // Check if file was unhosted during transfer
+        if (hostedId && !files[hostedId]) {
+            console.warn(`File ${file.name} was unhosted. Cancelling transfer ${fileId}.`);
+            const cancelMsg = JSON.stringify({
+                type: 'file-cancelled',
+                fileId,
+                reason: 'Unhosted by sender'
+            });
+            openChannels.forEach(dc => {
+                if (dc.readyState === 'open') dc.send(cancelMsg);
+            });
+            break;
+        }
+
         const { done, value } = await reader.read();
         if (done) break;
         
         // Chunk the value further if it's larger than CHUNK_SIZE
         for (let i = 0; i < value.length; i += CHUNK_SIZE) {
+            // Check again inside chunk loop for faster response to unhosting
+            if (hostedId && !files[hostedId]) break;
+
             const chunk = value.slice(i, i + CHUNK_SIZE);
             const packet = new Uint8Array(36 + chunk.length);
             packet.set(new TextEncoder().encode(fileId), 0);
@@ -930,8 +985,9 @@ async function sendFile(file, targetPeerId = null) {
                     while (dc.bufferedAmount > 1024 * 1024) {
                         await sleep(50);
                         if (dc.readyState !== 'open') break; // Abort wait if channel closes
+                        if (hostedId && !files[hostedId]) break; // Abort if unhosted
                     }
-                    if (dc.readyState === 'open') {
+                    if (dc.readyState === 'open' && (!hostedId || files[hostedId])) {
                         dc.send(packet);
                     }
                 }
@@ -945,13 +1001,15 @@ async function sendFile(file, targetPeerId = null) {
     }
 
     // Final update for the sender UI
-    if (targetPeerId === null) {
+    if (targetPeerId === null && files[fileId]) {
         updateProgress(fileId, 100);
     }
 
-    const end = JSON.stringify({ type: 'file-end', fileId });
-    for (const dc of openChannels) {
-        if (dc.readyState === 'open') dc.send(end);
+    if (!hostedId || files[hostedId]) {
+        const end = JSON.stringify({ type: 'file-end', fileId });
+        for (const dc of openChannels) {
+            if (dc.readyState === 'open') dc.send(end);
+        }
     }
 }
 
@@ -1401,9 +1459,21 @@ function addFileToList(id, name, size, type, ownerId, ownerName, mime = '', file
     const category = getFileCategory(name, mime);
     const sizeStr = (size / (1024 * 1024)).toFixed(2) + ' MB';
     
+    const isMe = (ownerId === peerId);
     let statusIconHtml = '';
-    if (type === 'sending') statusIconHtml = '<i class="bi bi-cloud-arrow-up text-primary fs-4 me-2"></i>';
-    else if (type === 'hosting') statusIconHtml = '<i class="bi bi-hdd-network text-info fs-4 me-2" title="Hosted & Available"></i>';
+    let actionBtnHtml = '';
+
+    if (type === 'sending') {
+        statusIconHtml = '<i class="bi bi-cloud-arrow-up text-primary fs-4 me-2"></i>';
+    } else if (type === 'hosting') {
+        statusIconHtml = '<i class="bi bi-hdd-network text-info fs-4 me-2" title="Hosted & Available"></i>';
+    }
+
+    if (isMe) {
+        actionBtnHtml = `<button onclick="unhostFile('${id}')" class="btn btn-sm btn-outline-danger ms-2 unhost-btn" title="Stop Hosting"><i class="bi bi-x-circle"></i></button>`;
+    } else {
+        actionBtnHtml = '<a href="#" class="btn btn-sm btn-success download-btn hidden ms-2"><i class="bi bi-download"></i></a>';
+    }
 
     const typeIconHtml = getFileIconHtml(category, fileObj);
 
@@ -1417,7 +1487,7 @@ function addFileToList(id, name, size, type, ownerId, ownerName, mime = '', file
             </div>
             <div class="flex-grow-1 me-3">
                 <div class="d-flex justify-content-between">
-                    <span class="fw-bold text-truncate" style="max-width: 200px;">${name}</span>
+                    <span class="fw-bold text-truncate file-name-text">${name}</span>
                     <span class="small text-muted">${sizeStr}</span>
                 </div>
                 <div class="progress mt-1">
@@ -1426,7 +1496,7 @@ function addFileToList(id, name, size, type, ownerId, ownerName, mime = '', file
             </div>
             <div class="d-flex align-items-center">
                 ${statusIconHtml}
-                <a href="#" class="btn btn-sm btn-success download-btn hidden"><i class="bi bi-download"></i></a>
+                ${actionBtnHtml}
             </div>
         </div>
     `;
@@ -1470,6 +1540,45 @@ function updateTransferStats() {
     
     if (countOthersEl) countOthersEl.innerText = `(${othersCount})`;
     if (countMineEl) countMineEl.innerText = `(${mineCount})`;
+}
+
+function unhostFile(fileId) {
+    if (!files[fileId]) return;
+
+    const fileName = files[fileId].name;
+
+    if (!confirm(`Are you sure you want to stop hosting "${fileName}"? Any active transfers will be cancelled.`)) {
+        return;
+    }
+
+    delete files[fileId];
+
+    // Remove from UI
+    const item = document.querySelector(`[data-file-id="${fileId}"]`);
+    if (item) {
+        const groupEl = item.closest('.user-file-group');
+        item.remove();
+        if (groupEl && groupEl.querySelectorAll('.file-list-item').length === 0) {
+            groupEl.remove();
+            updateFileFilterOptions();
+        }
+        applyFilters();
+    }
+
+    // Notify peers
+    const unhostMsg = JSON.stringify({
+        type: 'file-unhosted',
+        fileId: fileId
+    });
+
+    Object.values(dataChannels).forEach(dc => {
+        if (dc.readyState === 'open') {
+            dc.send(unhostMsg);
+        }
+    });
+
+    updateHostedStats();
+    console.log(`Unhosted file: ${fileName}`);
 }
 
 function updateHostedStats() {

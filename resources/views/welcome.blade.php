@@ -198,13 +198,46 @@
         .cookie-banner.show { transform: translateX(-50%) translateY(0); }
         .cookie-text { font-size: 0.9rem; color: var(--brand-dark); line-height: 1.4; margin: 0; }
         .cookie-btns { display: flex; gap: 10px; flex-shrink: 0; }
-        
+
+        .file-name-text { max-width: 200px; }
+        .x-small { font-size: 0.75rem; }
+
         @media (max-width: 768px) {
             .cookie-banner { flex-direction: column; align-items: flex-start; bottom: 12px; }
             .cookie-btns { width: 100%; justify-content: flex-end; }
         }
-    </style>
-</head>
+
+        @media (width < 400px) and (orientation: portrait) {
+            .file-name-text {
+                max-width: 95px;
+            }
+        }
+
+        #slogan {
+            position: relative;
+            min-height: 1.5em;
+            overflow: hidden;
+        }
+        #slogan span {
+            position: absolute;
+            left: 0;
+            right: 0;
+            opacity: 0;
+            animation: sloganFade 15s infinite ease-in-out;
+            white-space: nowrap;
+        }
+        #slogan span:nth-child(1) { animation-delay: 0s; }
+        #slogan span:nth-child(2) { animation-delay: 3s; }
+        #slogan span:nth-child(3) { animation-delay: 6s; }
+        #slogan span:nth-child(4) { animation-delay: 9s; }
+        #slogan span:nth-child(5) { animation-delay: 12s; }
+
+        @keyframes sloganFade {
+            0% { opacity: 0; transform: translateY(10px); }
+            5%, 15% { opacity: 1; transform: translateY(0); }
+            20%, 100% { opacity: 0; transform: translateY(-10px); }
+        }
+        </style></head>
 <body>
     <div id="vanta-bg" style="position: fixed; z-index: -1; top: 0; left: 0; width: 100%; height: 100vh;"></div>
 
@@ -226,8 +259,13 @@
                 <!-- Initial Choice -->
                 <div id="landing-initial" class="card p-4">
                     <h3 class="text-center mb-4">Transfer Files P2P</h3>
-                    <p class="text-muted text-center mb-4">From iOS to Android, PC to Phone, and Browser to Browser.</p>
-                    
+                    <p id="slogan" class="text-muted text-center mb-4">
+                        <span>From iOS to Android.</span>
+                        <span>From PC to Phone.</span>
+                        <span>Or Browser to Browser.</span>
+                        <span>vice versa.</span>
+                        <span>Anywhere, to any device.</span>
+                    </p>
                     <div class="d-grid gap-3">
                         <button type="button" id="btn-choice-create" class="btn btn-primary btn-lg py-3">
                             <i class="bi bi-plus-circle me-2"></i> Create a Session
