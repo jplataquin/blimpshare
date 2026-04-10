@@ -260,10 +260,10 @@
                 <div id="landing-initial" class="card p-4">
                     <h3 class="text-center mb-4">Transfer Files P2P</h3>
                     <p id="slogan" class="text-muted text-center mb-4">
-                        <span>From iOS to Android.</span>
-                        <span>From PC to Phone.</span>
-                        <span>Or Browser to Browser.</span>
-                        <span>vice versa.</span>
+                        <span>iOS to Android.</span>
+                        <span>PC to Phone.</span>
+                        <span>Browser to Browser.</span>
+                        <span>Or Vice versa.</span>
                         <span>Anywhere, to any device.</span>
                     </p>
                     <div class="d-grid gap-3">
