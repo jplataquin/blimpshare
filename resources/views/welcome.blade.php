@@ -263,7 +263,7 @@
                         <span>iOS to Android.</span>
                         <span>PC to Phone.</span>
                         <span>Browser to Browser.</span>
-                        <span>Or Vice versa.</span>
+                        <span>Or vice versa.</span>
                         <span>Anywhere, to any device.</span>
                     </p>
                     <div class="d-grid gap-3">
